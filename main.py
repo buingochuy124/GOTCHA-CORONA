@@ -13,19 +13,27 @@ CORONA_SCALE_RATIO = 0.5
 corona_template_image = cv2.imread(CORONA_TEMPLATE_PATH, 0)
 corona_template_image = cv2.resize(corona_template_image, None, fx=CORONA_SCALE_RATIO, fy=CORONA_SCALE_RATIO)
 
+corona_template = []
+corona_template.append(corona_template_image)
+corona_template.append(corona_template_image)
+
 def catch_corona(wave_image, threshold=0.8):
-    wave_image_gray = cv2.cvtColor(wave_image, cv2.COLOR_BGRA2GRAY)
-    res = cv2.matchTemplate(wave_image_gray, corona_template_image, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+    wave_image_gray = cv2.cvtColor(wave_image, cv2.COLOR_BGR2GRAY)
+    result = [[]]
 
-    if max_val < threshold:
-        return []
+    for image in corona_template:
+        res = cv2.matchTemplate(wave_image_gray, image, cv2.TM_CCORR_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
 
-    width, height = corona_template_image.shape[::-1]
-    top_left = max_loc
-    bottom_right = (top_left[0] + width, top_left[1] + height)
+        if max_val < threshold:
+            return []
 
-    return [[top_left, bottom_right]]
+        width, height = image.shape[::-1]
+        top_left = max_loc
+        bottom_right = (top_left[0] + width, top_left[1] + height)
+        result.append([[top_left, bottom_right]])
+
+    return result
 
 def base64_to_image(base64_data):
     encoded_data = base64_data.split(',')[1]
@@ -61,25 +69,31 @@ async def play_game(websocket, path):
         results = catch_corona(wave_image)
 
         ### save result image file for debugging purpose
-        for result in results:
-            cv2.rectangle(wave_image, result[0], result[1], (0, 0, 255), 2)
+        # for result in results:
+        #     cv2.rectangle(wave_image, result[0], result[1], (0, 0, 255), 2)
         
-        waves_dir = f'waves/{last_round_id}/'
-        if not os.path.exists(waves_dir):
-            os.makedirs(waves_dir)
+        # waves_dir = f'waves/{last_round_id}/'
+        # if not os.path.exists(waves_dir):
+        #     os.makedirs(waves_dir)
             
-        cv2.imwrite(os.path.join(waves_dir, f'{json_data["waveId"]}.jpg'), wave_image)
+        # cv2.imwrite(os.path.join(waves_dir, f'{json_data["waveId"]}.jpg'), wave_image)
 
         print(f'>>> Wave #{wave_count:03d}: {json_data["waveId"]}')
         wave_count = wave_count + 1
 
         ### store catching positions in the list
-        catchings.append({
-            "positions": [
-                {"x": (result[0][0] + result[1][0]) / 2, "y": (result[0][1] + result[1][1]) / 2} for result in results
-            ],
-            "waveId": json_data["waveId"]
-        })
+        for result in results:
+            for res in result:
+                catchings.append({
+                    "positions": [
+                        {
+                            "x": (res[0][0] + res[1][0]) / 2, 
+                            "y": (res[0][1] + res[1][1]) / 2
+                        }
+                    ],
+                    "waveId": json_data["waveId"]
+                })
+
 
         ### send result to websocket if it is the last wave
         if json_data["isLastWave"]:
